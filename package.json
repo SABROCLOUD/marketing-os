@@ -1,0 +1,10 @@
+{
+  "name": "marketing-os",
+  "private": true,
+  "scripts": {
+    "dev:website": "pnpm --filter website dev",
+    "dev:dashboard": "pnpm --filter dashboard dev",
+    "build:website": "pnpm --filter website build",
+    "build:dashboard": "pnpm --filter dashboard build"
+  }
+}
