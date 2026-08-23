@@ -1,0 +1,7 @@
+import Image from "next/image";
+import { brand } from "@/content/site";
+import { HeroLiquidScene } from "@/components/ThreeScenes";
+
+export function Hero() {
+  return <section id="top" className="hero-shell"><HeroLiquidScene /><div className="hero-grain" aria-hidden="true" /><div className="hero-copy"><p className="eyebrow reveal-up">{brand.heroEyebrow}</p><h1 className="display-title reveal-up reveal-delay-1">{brand.heroTitle}</h1><p className="hero-body reveal-up reveal-delay-2">{brand.heroBody}</p><div className="hero-actions reveal-up reveal-delay-3"><a className="button button--dark" href="#shop">Shop the ritual <span aria-hidden="true">↗</span></a><a className="text-link" href="#science">Explore our science <span aria-hidden="true">↓</span></a></div></div><div className="hero-product reveal-up reveal-delay-2"><div className="hero-product__halo" aria-hidden="true" /><Image src="/images/velora/hero-product.png" alt="VELORA serum bottle resting on limestone in warm morning light" fill priority loading="eager" sizes="(max-width: 768px) 90vw, 48vw" className="object-cover" /><div className="hero-product__label"><span>01</span><div><strong>Plump Serum</strong><small>Multi-weight hydration · 30 ml</small></div><span>$58</span></div></div><div className="hero-footnote" aria-label="Product values"><span>01 · Barrier intelligent</span><span>02 · Fragrance considered</span><span>03 · Texture obsessed</span></div></section>;
+}
