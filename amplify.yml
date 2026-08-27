@@ -16,7 +16,6 @@ applications:
               STANDALONE=apps/dashboard/.next/standalone
               APP_STANDALONE="$STANDALONE/apps/dashboard"
               DEST_NM=apps/dashboard/node_modules
-              ARTIFACT_NM=apps/dashboard/.next/node_modules
               test -d "$STANDALONE"
               test -f "$APP_STANDALONE/server.js"
               mkdir -p "$APP_STANDALONE/.next"
@@ -24,76 +23,35 @@ applications:
               if [ -d apps/dashboard/public ]; then
                 cp -a apps/dashboard/public "$APP_STANDALONE/"
               fi
-              rm -rf "$DEST_NM"
-              mkdir -p "$DEST_NM"
-              if [ -d "$STANDALONE/node_modules" ]; then
-                cp -a "$STANDALONE/node_modules/." "$DEST_NM/"
-              fi
-              hoist_pkg() {
-                pkg="$1"
-                dest="$DEST_NM/${pkg}"
-                src=""
-                if [ -e "$APP_STANDALONE/node_modules/$pkg" ]; then
-                  src=$(readlink -f "$APP_STANDALONE/node_modules/$pkg")
-                elif [ -e "$STANDALONE/node_modules/$pkg" ]; then
-                  src=$(readlink -f "$STANDALONE/node_modules/$pkg")
-                elif [ -d "$STANDALONE/node_modules/.pnpm" ]; then
-                  pkg_json=$(find "$STANDALONE/node_modules/.pnpm" -path "*/node_modules/${pkg}/package.json" | head -n 1)
-                  if [ -n "$pkg_json" ]; then
-                    src=$(dirname "$pkg_json")
-                  fi
-                fi
-                if [ -n "$src" ] && [ -f "$src/package.json" ]; then
-                  rm -rf "$dest"
-                  mkdir -p "$(dirname "$dest")"
-                  cp -a "$src" "$dest"
-                fi
-              }
-              for pkg in next react react-dom @swc/helpers styled-jsx @next/env client-only; do
-                hoist_pkg "$pkg"
-              done
-              if [ -e "$APP_STANDALONE/node_modules/next" ]; then
-                next_src=$(readlink -f "$APP_STANDALONE/node_modules/next")
-              elif [ -d "$STANDALONE/node_modules/.pnpm" ]; then
-                next_json=$(find "$STANDALONE/node_modules/.pnpm" -path "*/node_modules/next/package.json" | head -n 1)
-                if [ -n "$next_json" ]; then
-                  next_src=$(dirname "$next_json")
-                fi
-              fi
-              if [ -n "${next_src:-}" ] && [ -d "$next_src" ]; then
-                siblings=$(dirname "$next_src")
-                mkdir -p "$DEST_NM/next/node_modules"
-                for sib in "$siblings"/*; do
-                  [ -e "$sib" ] || continue
-                  name=$(basename "$sib")
-                  [ "$name" = "next" ] && continue
-                  real=$(readlink -f "$sib")
-                  [ -e "$real" ] || continue
-                  rm -rf "$DEST_NM/next/node_modules/$name"
-                  cp -a "$real" "$DEST_NM/next/node_modules/$name"
-                done
-              fi
-              test -f "$DEST_NM/next/package.json"
               has_swc_subpath() {
                 dir="$1"
                 [ -e "$dir/_/_interop_require_default.js" ] || [ -e "$dir/esm/_interop_require_default.js" ]
               }
+              NEXT_SRC=""
+              next_json=$(find "$STANDALONE/node_modules" -path "*/node_modules/next/package.json" 2>/dev/null | head -n 1)
+              if [ -n "$next_json" ]; then
+                NEXT_SRC=$(readlink -f "$(dirname "$next_json")")
+              fi
+              if [ -z "$NEXT_SRC" ] || [ ! -f "$NEXT_SRC/package.json" ]; then
+                echo "ERROR: could not find traced next in standalone" >&2
+                exit 1
+              fi
               SWC_SRC=""
               while IFS= read -r pkg_json; do
                 [ -n "$pkg_json" ] || continue
-                dir=$(dirname "$pkg_json")
-                dir=$(readlink -f "$dir")
+                dir=$(readlink -f "$(dirname "$pkg_json")")
                 if [ -f "$dir/package.json" ] && has_swc_subpath "$dir"; then
                   SWC_SRC="$dir"
                   break
                 fi
               done <<EOF
-              $(find "$DEST_NM" "$STANDALONE/node_modules" -path "*/@swc/helpers/package.json" 2>/dev/null)
+              $(find "$STANDALONE/node_modules" -path "*/@swc/helpers/package.json" 2>/dev/null)
               EOF
               if [ -z "$SWC_SRC" ]; then
                 echo "ERROR: could not find @swc/helpers with _interop_require_default" >&2
                 exit 1
               fi
+              echo "NEXT_SRC=$NEXT_SRC"
               echo "SWC_SRC=$SWC_SRC"
               materialize_swc_underscore() {
                 dir="$1"
@@ -110,6 +68,13 @@ applications:
                   return 1
                 fi
               }
+              copy_next() {
+                dest="$1"
+                rm -rf "$dest"
+                mkdir -p "$(dirname "$dest")"
+                cp -a "$NEXT_SRC" "$dest"
+                test -f "$dest/package.json"
+              }
               copy_swc_helpers() {
                 dest="$1"
                 rm -rf "$dest"
@@ -118,34 +83,24 @@ applications:
                 materialize_swc_underscore "$dest"
                 test -e "$dest/_/_interop_require_default.js"
               }
-              rm -rf "$ARTIFACT_NM"
-              mkdir -p "$ARTIFACT_NM"
-              cp -a "$DEST_NM/." "$ARTIFACT_NM/"
-              if [ -d "$DEST_NM/next" ]; then
-                mkdir -p "$STANDALONE/node_modules" "$APP_STANDALONE/node_modules" "$ARTIFACT_NM"
-                for dest_root in "$ARTIFACT_NM" "$STANDALONE/node_modules" "$APP_STANDALONE/node_modules"; do
-                  if [ ! -d "$dest_root/next" ]; then
-                    mkdir -p "$dest_root"
-                    cp -a "$DEST_NM/next" "$dest_root/next"
-                  fi
-                done
-              fi
-              copy_swc_helpers "$ARTIFACT_NM/@swc/helpers"
-              copy_swc_helpers "$ARTIFACT_NM/next/node_modules/@swc/helpers"
-              copy_swc_helpers "$STANDALONE/node_modules/@swc/helpers"
-              copy_swc_helpers "$STANDALONE/node_modules/next/node_modules/@swc/helpers"
-              copy_swc_helpers "$APP_STANDALONE/node_modules/@swc/helpers"
-              copy_swc_helpers "$DEST_NM/@swc/helpers"
-              copy_swc_helpers "$DEST_NM/next/node_modules/@swc/helpers"
-              test -e "$ARTIFACT_NM/next/node_modules/@swc/helpers/_/_interop_require_default.js" || test -e "$ARTIFACT_NM/@swc/helpers/_/_interop_require_default.js"
+              install_next_and_helpers() {
+                root="$1"
+                copy_next "$root/next"
+                copy_swc_helpers "$root/@swc/helpers"
+                copy_swc_helpers "$root/next/node_modules/@swc/helpers"
+              }
+              install_next_and_helpers "$STANDALONE/node_modules"
+              install_next_and_helpers "$APP_STANDALONE/node_modules"
+              rm -rf "$DEST_NM"
+              install_next_and_helpers "$DEST_NM"
+              rm -rf apps/dashboard/.next/node_modules apps/dashboard/.next/cache
+              test -e "$STANDALONE/node_modules/next/node_modules/@swc/helpers/_/_interop_require_default.js"
+              test -e "$STANDALONE/node_modules/@swc/helpers/_/_interop_require_default.js"
               echo SWC_SUBPATH_OK
-              test -d "$DEST_NM/@swc/helpers"
-              echo SWC_HELPERS_OK
-              rm -rf apps/dashboard/.next/cache
-              echo STANDALONE_OK
-              du -sh "$STANDALONE" apps/dashboard/.next "$DEST_NM/next" "$ARTIFACT_NM/@swc/helpers" "$ARTIFACT_NM/next/node_modules/@swc/helpers"
+              echo SLIM_STANDALONE_OK
+              du -sh "$STANDALONE" "$DEST_NM" "$DEST_NM/next" "$STANDALONE/node_modules/@swc/helpers" "$STANDALONE/node_modules/next/node_modules/@swc/helpers"
       artifacts:
-        baseDirectory: apps/dashboard/.next
+        baseDirectory: apps/dashboard/.next/standalone
         files:
           - '**/*'
       cache:
