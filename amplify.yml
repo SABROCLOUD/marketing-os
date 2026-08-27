@@ -1,0 +1,108 @@
+version: 1
+applications:
+  - appRoot: apps/dashboard
+    frontend:
+      buildPath: /
+      phases:
+        preBuild:
+          commands:
+            - corepack enable
+            - pnpm install --config.node-linker=hoisted --config.shamefully-hoist=true --config.dangerouslyAllowAllBuilds=true
+            - |
+              set -e
+              copy_runtime_dep() {
+                pkg="$1"
+                dest="apps/dashboard/node_modules/${pkg}"
+                mkdir -p apps/dashboard/node_modules
+                src=""
+                if [ -f "apps/dashboard/node_modules/${pkg}/package.json" ]; then
+                  src="apps/dashboard/node_modules/${pkg}"
+                elif [ -f "node_modules/${pkg}/package.json" ]; then
+                  src="node_modules/${pkg}"
+                else
+                  for path in node_modules/.pnpm/${pkg}@*/node_modules/${pkg}; do
+                    if [ -f "${path}/package.json" ]; then
+                      src="$path"
+                      break
+                    fi
+                  done
+                fi
+                if [ -z "$src" ] && [ -d node_modules/.pnpm ]; then
+                  pkg_json=$(find node_modules/.pnpm -path "*/node_modules/${pkg}/package.json" 2>/dev/null | head -n 1)
+                  if [ -n "$pkg_json" ]; then
+                    src=$(dirname "$pkg_json")
+                  fi
+                fi
+                if [ -z "$src" ]; then
+                  if [ "$pkg" = "next" ]; then
+                    echo "ERROR: could not find next to copy into apps/dashboard/node_modules/next" >&2
+                    return 1
+                  fi
+                  return 0
+                fi
+                tmp="${dest}.copy-tmp"
+                rm -rf "$tmp"
+                cp -aL "$src" "$tmp"
+                rm -rf "$dest"
+                mv "$tmp" "$dest"
+              }
+              copy_runtime_dep next
+              copy_runtime_dep react
+              copy_runtime_dep react-dom
+              test -f apps/dashboard/node_modules/next/package.json
+              echo NEXT_COPIED_OK
+        build:
+          commands:
+            - pnpm run build:dashboard
+            - |
+              set -e
+              copy_runtime_dep() {
+                pkg="$1"
+                dest="apps/dashboard/node_modules/${pkg}"
+                mkdir -p apps/dashboard/node_modules
+                src=""
+                if [ -f "apps/dashboard/node_modules/${pkg}/package.json" ]; then
+                  src="apps/dashboard/node_modules/${pkg}"
+                elif [ -f "node_modules/${pkg}/package.json" ]; then
+                  src="node_modules/${pkg}"
+                else
+                  for path in node_modules/.pnpm/${pkg}@*/node_modules/${pkg}; do
+                    if [ -f "${path}/package.json" ]; then
+                      src="$path"
+                      break
+                    fi
+                  done
+                fi
+                if [ -z "$src" ] && [ -d node_modules/.pnpm ]; then
+                  pkg_json=$(find node_modules/.pnpm -path "*/node_modules/${pkg}/package.json" 2>/dev/null | head -n 1)
+                  if [ -n "$pkg_json" ]; then
+                    src=$(dirname "$pkg_json")
+                  fi
+                fi
+                if [ -z "$src" ]; then
+                  if [ "$pkg" = "next" ]; then
+                    echo "ERROR: could not find next to copy into apps/dashboard/node_modules/next" >&2
+                    return 1
+                  fi
+                  return 0
+                fi
+                tmp="${dest}.copy-tmp"
+                rm -rf "$tmp"
+                cp -aL "$src" "$tmp"
+                rm -rf "$dest"
+                mv "$tmp" "$dest"
+              }
+              copy_runtime_dep next
+              copy_runtime_dep react
+              copy_runtime_dep react-dom
+              test -f apps/dashboard/node_modules/next/package.json
+              echo NEXT_COPIED_OK
+      artifacts:
+        baseDirectory: apps/dashboard/.next
+        files:
+          - '**/*'
+      cache:
+        paths:
+          - node_modules/**/*
+          - apps/dashboard/node_modules/**/*
+          - apps/dashboard/.next/cache/**/*
