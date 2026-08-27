@@ -75,9 +75,23 @@ applications:
               test -f "$DEST_NM/next/package.json"
               test -d "$DEST_NM/@swc/helpers"
               echo SWC_HELPERS_OK
+              mkdir -p apps/dashboard/.next/node_modules "$STANDALONE/node_modules" "$APP_STANDALONE/node_modules"
+              for pkg in next react react-dom @swc/helpers styled-jsx @next/env client-only; do
+                src="$DEST_NM/${pkg}"
+                if [ -f "$src/package.json" ]; then
+                  for dest_root in apps/dashboard/.next/node_modules "$STANDALONE/node_modules" "$APP_STANDALONE/node_modules"; do
+                    rm -rf "$dest_root/${pkg}"
+                    mkdir -p "$(dirname "$dest_root/${pkg}")"
+                    cp -a "$src" "$dest_root/${pkg}"
+                  done
+                fi
+              done
+              test -f apps/dashboard/.next/node_modules/@swc/helpers/package.json
+              test -e apps/dashboard/.next/node_modules/@swc/helpers/_/_interop_require_default.js || test -e apps/dashboard/.next/node_modules/@swc/helpers/esm/_interop_require_default.js || ls apps/dashboard/.next/node_modules/@swc/helpers
+              echo SWC_IN_NEXT_ARTIFACT_OK
               rm -rf apps/dashboard/.next/cache
               echo STANDALONE_OK
-              du -sh "$STANDALONE" apps/dashboard/.next "$DEST_NM/next" "$DEST_NM/@swc/helpers"
+              du -sh "$STANDALONE" apps/dashboard/.next "$DEST_NM/next" "$DEST_NM/@swc/helpers" apps/dashboard/.next/node_modules/@swc/helpers
       artifacts:
         baseDirectory: apps/dashboard/.next
         files:
