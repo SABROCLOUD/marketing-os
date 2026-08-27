@@ -68,20 +68,35 @@ applications:
                   return 1
                 fi
               }
+              copy_real_dir() {
+                src="$1"
+                dest="$2"
+                real=$(readlink -f "$src")
+                test -d "$real"
+                tmp="${dest}.copy-tmp"
+                rm -rf "$tmp" "$dest"
+                mkdir -p "$(dirname "$dest")"
+                cp -a --dereference "$real" "$tmp"
+                if [ -L "$tmp" ]; then
+                  echo "ERROR: copy of $src is still a symlink at $tmp" >&2
+                  exit 1
+                fi
+                mv "$tmp" "$dest"
+                test ! -L "$dest"
+                test -d "$dest"
+              }
               copy_next() {
                 dest="$1"
-                rm -rf "$dest"
-                mkdir -p "$(dirname "$dest")"
-                cp -a "$NEXT_SRC" "$dest"
+                copy_real_dir "$NEXT_SRC" "$dest"
                 test -f "$dest/package.json"
+                test -d "$dest/dist"
               }
               copy_swc_helpers() {
                 dest="$1"
-                rm -rf "$dest"
-                mkdir -p "$(dirname "$dest")"
-                cp -a "$SWC_SRC" "$dest"
+                copy_real_dir "$SWC_SRC" "$dest"
                 materialize_swc_underscore "$dest"
                 test -e "$dest/_/_interop_require_default.js"
+                test ! -L "$dest"
               }
               install_next_and_helpers() {
                 root="$1"
@@ -120,6 +135,15 @@ applications:
               $(find apps/dashboard/.next -name '*.nft.json' ! -path '*/cache/*' 2>/dev/null)
               EOF
               rm -rf apps/dashboard/.next/node_modules apps/dashboard/.next/cache
+              install_next_and_helpers "$STANDALONE/node_modules"
+              install_next_and_helpers "$APP_STANDALONE/node_modules"
+              install_next_and_helpers "$DEST_NM"
+              test ! -L "$STANDALONE/node_modules/next"
+              test ! -L "$STANDALONE/node_modules/@swc/helpers"
+              test -f "$STANDALONE/node_modules/next/package.json"
+              test -d "$STANDALONE/node_modules/next/dist"
+              ls "$STANDALONE/node_modules" | grep -w next
+              echo NEXT_AT_ARTIFACT_ROOT_OK
               test -e "$STANDALONE/node_modules/next/node_modules/@swc/helpers/_/_interop_require_default.js"
               test -e "$STANDALONE/node_modules/@swc/helpers/_/_interop_require_default.js"
               echo SWC_SUBPATH_OK
@@ -129,7 +153,7 @@ applications:
               test "$nft_count" -ge 1
               echo SERVER_TRACES_OK
               echo SLIM_STANDALONE_OK
-              du -sh "$STANDALONE" "$DEST_NM" "$DEST_NM/next" "$STANDALONE/node_modules/@swc/helpers" "$STANDALONE/node_modules/next/node_modules/@swc/helpers"
+              du -sh "$STANDALONE" "$DEST_NM" "$DEST_NM/next" "$STANDALONE/node_modules/next" "$STANDALONE/node_modules/@swc/helpers"
       artifacts:
         baseDirectory: apps/dashboard/.next/standalone
         files:
