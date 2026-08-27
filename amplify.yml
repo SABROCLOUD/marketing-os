@@ -15,6 +15,7 @@ applications:
               set -e
               STANDALONE=apps/dashboard/.next/standalone
               APP_STANDALONE="$STANDALONE/apps/dashboard"
+              DEST_NM=apps/dashboard/node_modules
               test -d "$STANDALONE"
               test -f "$APP_STANDALONE/server.js"
               mkdir -p "$APP_STANDALONE/.next"
@@ -22,12 +23,14 @@ applications:
               if [ -d apps/dashboard/public ]; then
                 cp -a apps/dashboard/public "$APP_STANDALONE/"
               fi
-              rm -rf apps/dashboard/node_modules
-              mkdir -p apps/dashboard/node_modules
+              rm -rf "$DEST_NM"
+              mkdir -p "$DEST_NM"
               if [ -d "$STANDALONE/node_modules" ]; then
-                cp -a "$STANDALONE/node_modules/." apps/dashboard/node_modules/
+                cp -a "$STANDALONE/node_modules/." "$DEST_NM/"
               fi
-              for pkg in next react react-dom; do
+              hoist_pkg() {
+                pkg="$1"
+                dest="$DEST_NM/${pkg}"
                 src=""
                 if [ -e "$APP_STANDALONE/node_modules/$pkg" ]; then
                   src=$(readlink -f "$APP_STANDALONE/node_modules/$pkg")
@@ -40,14 +43,41 @@ applications:
                   fi
                 fi
                 if [ -n "$src" ] && [ -f "$src/package.json" ]; then
-                  rm -rf "apps/dashboard/node_modules/$pkg"
-                  cp -a "$src" "apps/dashboard/node_modules/$pkg"
+                  rm -rf "$dest"
+                  mkdir -p "$(dirname "$dest")"
+                  cp -a "$src" "$dest"
                 fi
+              }
+              for pkg in next react react-dom @swc/helpers styled-jsx @next/env client-only; do
+                hoist_pkg "$pkg"
               done
-              test -f apps/dashboard/node_modules/next/package.json
+              if [ -e "$APP_STANDALONE/node_modules/next" ]; then
+                next_src=$(readlink -f "$APP_STANDALONE/node_modules/next")
+              elif [ -d "$STANDALONE/node_modules/.pnpm" ]; then
+                next_json=$(find "$STANDALONE/node_modules/.pnpm" -path "*/node_modules/next/package.json" | head -n 1)
+                if [ -n "$next_json" ]; then
+                  next_src=$(dirname "$next_json")
+                fi
+              fi
+              if [ -n "${next_src:-}" ] && [ -d "$next_src" ]; then
+                siblings=$(dirname "$next_src")
+                mkdir -p "$DEST_NM/next/node_modules"
+                for sib in "$siblings"/*; do
+                  [ -e "$sib" ] || continue
+                  name=$(basename "$sib")
+                  [ "$name" = "next" ] && continue
+                  real=$(readlink -f "$sib")
+                  [ -e "$real" ] || continue
+                  rm -rf "$DEST_NM/next/node_modules/$name"
+                  cp -a "$real" "$DEST_NM/next/node_modules/$name"
+                done
+              fi
+              test -f "$DEST_NM/next/package.json"
+              test -d "$DEST_NM/@swc/helpers"
+              echo SWC_HELPERS_OK
               rm -rf apps/dashboard/.next/cache
               echo STANDALONE_OK
-              du -sh "$STANDALONE" apps/dashboard/.next apps/dashboard/node_modules/next
+              du -sh "$STANDALONE" apps/dashboard/.next "$DEST_NM/next" "$DEST_NM/@swc/helpers"
       artifacts:
         baseDirectory: apps/dashboard/.next
         files:
