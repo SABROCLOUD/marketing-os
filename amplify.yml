@@ -16,6 +16,7 @@ applications:
               STANDALONE=apps/dashboard/.next/standalone
               APP_STANDALONE="$STANDALONE/apps/dashboard"
               DEST_NM=apps/dashboard/node_modules
+              ARTIFACT_NM=apps/dashboard/.next/node_modules
               test -d "$STANDALONE"
               test -f "$APP_STANDALONE/server.js"
               mkdir -p "$APP_STANDALONE/.next"
@@ -73,25 +74,76 @@ applications:
                 done
               fi
               test -f "$DEST_NM/next/package.json"
+              has_swc_subpath() {
+                dir="$1"
+                [ -e "$dir/_/_interop_require_default.js" ] || [ -e "$dir/esm/_interop_require_default.js" ]
+              }
+              SWC_SRC=""
+              while IFS= read -r pkg_json; do
+                [ -n "$pkg_json" ] || continue
+                dir=$(dirname "$pkg_json")
+                dir=$(readlink -f "$dir")
+                if [ -f "$dir/package.json" ] && has_swc_subpath "$dir"; then
+                  SWC_SRC="$dir"
+                  break
+                fi
+              done <<EOF
+              $(find "$DEST_NM" "$STANDALONE/node_modules" -path "*/@swc/helpers/package.json" 2>/dev/null)
+              EOF
+              if [ -z "$SWC_SRC" ]; then
+                echo "ERROR: could not find @swc/helpers with _interop_require_default" >&2
+                exit 1
+              fi
+              echo "SWC_SRC=$SWC_SRC"
+              materialize_swc_underscore() {
+                dir="$1"
+                if [ -e "$dir/_/_interop_require_default.js" ]; then
+                  return 0
+                fi
+                mkdir -p "$dir/_"
+                if [ -f "$dir/esm/_interop_require_default.js" ]; then
+                  cp -a "$dir/esm/_interop_require_default.js" "$dir/_/_interop_require_default.js"
+                elif [ -f "$dir/cjs/_interop_require_default.cjs" ]; then
+                  cp -a "$dir/cjs/_interop_require_default.cjs" "$dir/_/_interop_require_default.js"
+                else
+                  echo "ERROR: cannot materialize _/_interop_require_default.js in $dir" >&2
+                  return 1
+                fi
+              }
+              copy_swc_helpers() {
+                dest="$1"
+                rm -rf "$dest"
+                mkdir -p "$(dirname "$dest")"
+                cp -a "$SWC_SRC" "$dest"
+                materialize_swc_underscore "$dest"
+                test -e "$dest/_/_interop_require_default.js"
+              }
+              rm -rf "$ARTIFACT_NM"
+              mkdir -p "$ARTIFACT_NM"
+              cp -a "$DEST_NM/." "$ARTIFACT_NM/"
+              if [ -d "$DEST_NM/next" ]; then
+                mkdir -p "$STANDALONE/node_modules" "$APP_STANDALONE/node_modules" "$ARTIFACT_NM"
+                for dest_root in "$ARTIFACT_NM" "$STANDALONE/node_modules" "$APP_STANDALONE/node_modules"; do
+                  if [ ! -d "$dest_root/next" ]; then
+                    mkdir -p "$dest_root"
+                    cp -a "$DEST_NM/next" "$dest_root/next"
+                  fi
+                done
+              fi
+              copy_swc_helpers "$ARTIFACT_NM/@swc/helpers"
+              copy_swc_helpers "$ARTIFACT_NM/next/node_modules/@swc/helpers"
+              copy_swc_helpers "$STANDALONE/node_modules/@swc/helpers"
+              copy_swc_helpers "$STANDALONE/node_modules/next/node_modules/@swc/helpers"
+              copy_swc_helpers "$APP_STANDALONE/node_modules/@swc/helpers"
+              copy_swc_helpers "$DEST_NM/@swc/helpers"
+              copy_swc_helpers "$DEST_NM/next/node_modules/@swc/helpers"
+              test -e "$ARTIFACT_NM/next/node_modules/@swc/helpers/_/_interop_require_default.js" || test -e "$ARTIFACT_NM/@swc/helpers/_/_interop_require_default.js"
+              echo SWC_SUBPATH_OK
               test -d "$DEST_NM/@swc/helpers"
               echo SWC_HELPERS_OK
-              mkdir -p apps/dashboard/.next/node_modules "$STANDALONE/node_modules" "$APP_STANDALONE/node_modules"
-              for pkg in next react react-dom @swc/helpers styled-jsx @next/env client-only; do
-                src="$DEST_NM/${pkg}"
-                if [ -f "$src/package.json" ]; then
-                  for dest_root in apps/dashboard/.next/node_modules "$STANDALONE/node_modules" "$APP_STANDALONE/node_modules"; do
-                    rm -rf "$dest_root/${pkg}"
-                    mkdir -p "$(dirname "$dest_root/${pkg}")"
-                    cp -a "$src" "$dest_root/${pkg}"
-                  done
-                fi
-              done
-              test -f apps/dashboard/.next/node_modules/@swc/helpers/package.json
-              test -e apps/dashboard/.next/node_modules/@swc/helpers/_/_interop_require_default.js || test -e apps/dashboard/.next/node_modules/@swc/helpers/esm/_interop_require_default.js || ls apps/dashboard/.next/node_modules/@swc/helpers
-              echo SWC_IN_NEXT_ARTIFACT_OK
               rm -rf apps/dashboard/.next/cache
               echo STANDALONE_OK
-              du -sh "$STANDALONE" apps/dashboard/.next "$DEST_NM/next" "$DEST_NM/@swc/helpers" apps/dashboard/.next/node_modules/@swc/helpers
+              du -sh "$STANDALONE" apps/dashboard/.next "$DEST_NM/next" "$ARTIFACT_NM/@swc/helpers" "$ARTIFACT_NM/next/node_modules/@swc/helpers"
       artifacts:
         baseDirectory: apps/dashboard/.next
         files:
