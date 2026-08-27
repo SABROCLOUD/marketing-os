@@ -93,10 +93,19 @@ applications:
               install_next_and_helpers "$APP_STANDALONE/node_modules"
               rm -rf "$DEST_NM"
               install_next_and_helpers "$DEST_NM"
+              test -f apps/dashboard/.next/required-server-files.json
+              cp -a apps/dashboard/.next/required-server-files.json "$STANDALONE/required-server-files.json"
+              cp -a apps/dashboard/.next/required-server-files.json "$APP_STANDALONE/required-server-files.json"
+              if [ -f apps/dashboard/.next/BUILD_ID ]; then
+                cp -a apps/dashboard/.next/BUILD_ID "$STANDALONE/BUILD_ID"
+                cp -a apps/dashboard/.next/BUILD_ID "$APP_STANDALONE/BUILD_ID"
+              fi
               rm -rf apps/dashboard/.next/node_modules apps/dashboard/.next/cache
               test -e "$STANDALONE/node_modules/next/node_modules/@swc/helpers/_/_interop_require_default.js"
               test -e "$STANDALONE/node_modules/@swc/helpers/_/_interop_require_default.js"
               echo SWC_SUBPATH_OK
+              test -f "$STANDALONE/required-server-files.json"
+              echo REQUIRED_SERVER_FILES_OK
               echo SLIM_STANDALONE_OK
               du -sh "$STANDALONE" "$DEST_NM" "$DEST_NM/next" "$STANDALONE/node_modules/@swc/helpers" "$STANDALONE/node_modules/next/node_modules/@swc/helpers"
       artifacts:
