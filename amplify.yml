@@ -112,38 +112,67 @@ applications:
                 src="$2"
                 dest_root="$3"
                 [ "$name" = "next" ] && return 0
+                mkdir -p "$dest_root"
                 copy_real_dir "$src" "$dest_root/$name"
                 if [ "$name" = "@swc" ] && [ -d "$dest_root/@swc/helpers" ]; then
                   materialize_swc_underscore "$dest_root/@swc/helpers"
                 fi
+                if [ "$name" = "@next" ] && [ -e "$src/env" ] && [ ! -f "$dest_root/@next/env/package.json" ]; then
+                  mkdir -p "$dest_root/@next"
+                  copy_real_dir "$src/env" "$dest_root/@next/env"
+                fi
               }
-              install_next_siblings() {
+              CLIENT_ONLY_SRC=""
+              copy_all_siblings_into() {
+                dest_root="$1"
+                mkdir -p "$dest_root"
                 siblings=$(dirname "$NEXT_SRC")
                 for sib in "$siblings"/*; do
                   [ -e "$sib" ] || continue
                   name=$(basename "$sib")
                   [ "$name" = "next" ] && continue
-                  copy_sibling_into "$name" "$sib" "$STANDALONE/node_modules"
-                  copy_sibling_into "$name" "$sib" "$STANDALONE/node_modules/next/node_modules"
-                  copy_sibling_into "$name" "$sib" "$APP_STANDALONE/node_modules"
-                  copy_sibling_into "$name" "$sib" "$DEST_NM"
+                  copy_sibling_into "$name" "$sib" "$dest_root"
                 done
-                if [ ! -f "$STANDALONE/node_modules/client-only/package.json" ]; then
-                  co_json=$(find "$STANDALONE/node_modules" -path "*/node_modules/client-only/package.json" 2>/dev/null | head -n 1)
-                  if [ -n "$co_json" ]; then
-                    co_src=$(readlink -f "$(dirname "$co_json")")
-                    copy_sibling_into client-only "$co_src" "$STANDALONE/node_modules"
-                    copy_sibling_into client-only "$co_src" "$STANDALONE/node_modules/next/node_modules"
-                    copy_sibling_into client-only "$co_src" "$APP_STANDALONE/node_modules"
-                    copy_sibling_into client-only "$co_src" "$DEST_NM"
+                if [ ! -f "$dest_root/client-only/package.json" ]; then
+                  if [ -z "$CLIENT_ONLY_SRC" ]; then
+                    co_json=$(find "$STANDALONE/node_modules" -path "*/node_modules/client-only/package.json" 2>/dev/null | head -n 1)
+                    if [ -n "$co_json" ]; then
+                      CLIENT_ONLY_SRC=$(readlink -f "$(dirname "$co_json")")
+                    fi
+                  fi
+                  if [ -n "$CLIENT_ONLY_SRC" ]; then
+                    copy_sibling_into client-only "$CLIENT_ONLY_SRC" "$dest_root"
                   fi
                 fi
               }
+              nest_siblings_into_next() {
+                next_pkg="$1"
+                mkdir -p "$next_pkg/node_modules"
+                copy_all_siblings_into "$next_pkg/node_modules"
+                if [ -d "$next_pkg/node_modules/@swc/helpers" ]; then
+                  materialize_swc_underscore "$next_pkg/node_modules/@swc/helpers"
+                fi
+              }
+              nest_siblings_into_next "$NEXT_SRC"
               install_next_and_helpers "$STANDALONE/node_modules"
               install_next_and_helpers "$APP_STANDALONE/node_modules"
               rm -rf "$DEST_NM"
               install_next_and_helpers "$DEST_NM"
-              install_next_siblings
+              copy_all_siblings_into "$STANDALONE/node_modules"
+              copy_all_siblings_into "$APP_STANDALONE/node_modules"
+              copy_all_siblings_into "$DEST_NM"
+              nest_siblings_into_next "$DEST_NM/next"
+              nest_siblings_into_next "$STANDALONE/node_modules/next"
+              nest_siblings_into_next "$APP_STANDALONE/node_modules/next"
+              copy_next "$DEST_NM/next"
+              copy_next "$STANDALONE/node_modules/next"
+              copy_next "$APP_STANDALONE/node_modules/next"
+              nest_siblings_into_next "$DEST_NM/next"
+              nest_siblings_into_next "$STANDALONE/node_modules/next"
+              nest_siblings_into_next "$APP_STANDALONE/node_modules/next"
+              copy_swc_helpers "$DEST_NM/next/node_modules/@swc/helpers"
+              copy_swc_helpers "$STANDALONE/node_modules/next/node_modules/@swc/helpers"
+              copy_swc_helpers "$APP_STANDALONE/node_modules/next/node_modules/@swc/helpers"
               rm -rf apps/dashboard/.next/cache
               next_bytes=$(du -sb apps/dashboard/.next | awk '{print $1}')
               if [ "$next_bytes" -gt 188743680 ]; then
@@ -157,9 +186,12 @@ applications:
               echo SWC_SUBPATH_OK
               test -f "$STANDALONE/node_modules/@next/env/package.json"
               echo NEXT_ENV_OK
+              test -f "$DEST_NM/next/node_modules/@next/env/package.json"
+              test -f "$STANDALONE/node_modules/next/node_modules/@next/env/package.json"
+              echo NEXT_ENV_NESTED_OK
               test -f apps/dashboard/.next/required-server-files.json
               echo REQUIRED_SERVER_FILES_OK
-              du -sh apps/dashboard/.next "$STANDALONE" "$DEST_NM" "$STANDALONE/node_modules/next" "$STANDALONE/node_modules/@next/env"
+              du -sh apps/dashboard/.next "$STANDALONE" "$DEST_NM" "$STANDALONE/node_modules/next" "$DEST_NM/next/node_modules/@next/env" "$STANDALONE/node_modules/next/node_modules/@next/env"
       artifacts:
         baseDirectory: apps/dashboard/.next
         files:
