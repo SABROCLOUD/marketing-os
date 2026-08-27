@@ -153,11 +153,15 @@ applications:
               test "$nft_count" -ge 1
               echo SERVER_TRACES_OK
               echo SLIM_STANDALONE_OK
+              echo ARTIFACTS_INCLUDE_NM_OK
               du -sh "$STANDALONE" "$DEST_NM" "$DEST_NM/next" "$STANDALONE/node_modules/next" "$STANDALONE/node_modules/@swc/helpers"
       artifacts:
+        # Amplify omits node_modules from '**/*' unless listed explicitly.
         baseDirectory: apps/dashboard/.next/standalone
         files:
           - '**/*'
+          - 'node_modules/**/*'
+          - '**/node_modules/**/*'
       cache:
         paths:
           - node_modules/**/*
