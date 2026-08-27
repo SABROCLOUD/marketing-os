@@ -8,97 +8,46 @@ applications:
           commands:
             - corepack enable
             - pnpm install --config.node-linker=hoisted --config.shamefully-hoist=true --config.dangerouslyAllowAllBuilds=true
-            - |
-              set -e
-              copy_runtime_dep() {
-                pkg="$1"
-                dest="apps/dashboard/node_modules/${pkg}"
-                mkdir -p apps/dashboard/node_modules
-                src=""
-                if [ -f "apps/dashboard/node_modules/${pkg}/package.json" ]; then
-                  src="apps/dashboard/node_modules/${pkg}"
-                elif [ -f "node_modules/${pkg}/package.json" ]; then
-                  src="node_modules/${pkg}"
-                else
-                  for path in node_modules/.pnpm/${pkg}@*/node_modules/${pkg}; do
-                    if [ -f "${path}/package.json" ]; then
-                      src="$path"
-                      break
-                    fi
-                  done
-                fi
-                if [ -z "$src" ] && [ -d node_modules/.pnpm ]; then
-                  pkg_json=$(find node_modules/.pnpm -path "*/node_modules/${pkg}/package.json" 2>/dev/null | head -n 1)
-                  if [ -n "$pkg_json" ]; then
-                    src=$(dirname "$pkg_json")
-                  fi
-                fi
-                if [ -z "$src" ]; then
-                  if [ "$pkg" = "next" ]; then
-                    echo "ERROR: could not find next to copy into apps/dashboard/node_modules/next" >&2
-                    return 1
-                  fi
-                  return 0
-                fi
-                tmp="${dest}.copy-tmp"
-                rm -rf "$tmp"
-                cp -aL "$src" "$tmp"
-                rm -rf "$dest"
-                mv "$tmp" "$dest"
-              }
-              copy_runtime_dep next
-              copy_runtime_dep react
-              copy_runtime_dep react-dom
-              test -f apps/dashboard/node_modules/next/package.json
-              echo NEXT_COPIED_OK
         build:
           commands:
             - pnpm run build:dashboard
             - |
               set -e
-              copy_runtime_dep() {
-                pkg="$1"
-                dest="apps/dashboard/node_modules/${pkg}"
-                mkdir -p apps/dashboard/node_modules
+              STANDALONE=apps/dashboard/.next/standalone
+              APP_STANDALONE="$STANDALONE/apps/dashboard"
+              test -d "$STANDALONE"
+              test -f "$APP_STANDALONE/server.js"
+              mkdir -p "$APP_STANDALONE/.next"
+              cp -a apps/dashboard/.next/static "$APP_STANDALONE/.next/"
+              if [ -d apps/dashboard/public ]; then
+                cp -a apps/dashboard/public "$APP_STANDALONE/"
+              fi
+              rm -rf apps/dashboard/node_modules
+              mkdir -p apps/dashboard/node_modules
+              if [ -d "$STANDALONE/node_modules" ]; then
+                cp -a "$STANDALONE/node_modules/." apps/dashboard/node_modules/
+              fi
+              for pkg in next react react-dom; do
                 src=""
-                if [ -f "apps/dashboard/node_modules/${pkg}/package.json" ]; then
-                  src="apps/dashboard/node_modules/${pkg}"
-                elif [ -f "node_modules/${pkg}/package.json" ]; then
-                  src="node_modules/${pkg}"
-                else
-                  for path in node_modules/.pnpm/${pkg}@*/node_modules/${pkg}; do
-                    if [ -f "${path}/package.json" ]; then
-                      src="$path"
-                      break
-                    fi
-                  done
-                fi
-                if [ -z "$src" ] && [ -d node_modules/.pnpm ]; then
-                  pkg_json=$(find node_modules/.pnpm -path "*/node_modules/${pkg}/package.json" 2>/dev/null | head -n 1)
+                if [ -e "$APP_STANDALONE/node_modules/$pkg" ]; then
+                  src=$(readlink -f "$APP_STANDALONE/node_modules/$pkg")
+                elif [ -e "$STANDALONE/node_modules/$pkg" ]; then
+                  src=$(readlink -f "$STANDALONE/node_modules/$pkg")
+                elif [ -d "$STANDALONE/node_modules/.pnpm" ]; then
+                  pkg_json=$(find "$STANDALONE/node_modules/.pnpm" -path "*/node_modules/${pkg}/package.json" | head -n 1)
                   if [ -n "$pkg_json" ]; then
                     src=$(dirname "$pkg_json")
                   fi
                 fi
-                if [ -z "$src" ]; then
-                  if [ "$pkg" = "next" ]; then
-                    echo "ERROR: could not find next to copy into apps/dashboard/node_modules/next" >&2
-                    return 1
-                  fi
-                  return 0
+                if [ -n "$src" ] && [ -f "$src/package.json" ]; then
+                  rm -rf "apps/dashboard/node_modules/$pkg"
+                  cp -a "$src" "apps/dashboard/node_modules/$pkg"
                 fi
-                tmp="${dest}.copy-tmp"
-                rm -rf "$tmp"
-                cp -aL "$src" "$tmp"
-                rm -rf "$dest"
-                mv "$tmp" "$dest"
-              }
-              copy_runtime_dep next
-              copy_runtime_dep react
-              copy_runtime_dep react-dom
+              done
               test -f apps/dashboard/node_modules/next/package.json
-              echo NEXT_COPIED_OK
               rm -rf apps/dashboard/.next/cache
-              echo NEXT_CACHE_REMOVED_OK
+              echo STANDALONE_OK
+              du -sh "$STANDALONE" apps/dashboard/.next apps/dashboard/node_modules/next
       artifacts:
         baseDirectory: apps/dashboard/.next
         files:
@@ -106,5 +55,4 @@ applications:
       cache:
         paths:
           - node_modules/**/*
-          - apps/dashboard/node_modules/**/*
           - apps/dashboard/.next/cache/**/*
