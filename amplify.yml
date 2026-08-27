@@ -97,6 +97,8 @@ applications:
               copy_runtime_dep react-dom
               test -f apps/dashboard/node_modules/next/package.json
               echo NEXT_COPIED_OK
+              rm -rf apps/dashboard/.next/cache
+              echo NEXT_CACHE_REMOVED_OK
       artifacts:
         baseDirectory: apps/dashboard/.next
         files:
