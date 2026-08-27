@@ -28,7 +28,10 @@ applications:
                 [ -e "$dir/_/_interop_require_default.js" ] || [ -e "$dir/esm/_interop_require_default.js" ]
               }
               NEXT_SRC=""
-              next_json=$(find "$STANDALONE/node_modules" -path "*/node_modules/next/package.json" 2>/dev/null | head -n 1)
+              next_json=$(find "$STANDALONE/node_modules/.pnpm" -path "*/node_modules/next/package.json" 2>/dev/null | head -n 1)
+              if [ -z "$next_json" ]; then
+                next_json=$(find "$STANDALONE/node_modules" -path "*/node_modules/next/package.json" 2>/dev/null | head -n 1)
+              fi
               if [ -n "$next_json" ]; then
                 NEXT_SRC=$(readlink -f "$(dirname "$next_json")")
               fi
@@ -104,10 +107,43 @@ applications:
                 copy_swc_helpers "$root/@swc/helpers"
                 copy_swc_helpers "$root/next/node_modules/@swc/helpers"
               }
+              copy_sibling_into() {
+                name="$1"
+                src="$2"
+                dest_root="$3"
+                [ "$name" = "next" ] && return 0
+                copy_real_dir "$src" "$dest_root/$name"
+                if [ "$name" = "@swc" ] && [ -d "$dest_root/@swc/helpers" ]; then
+                  materialize_swc_underscore "$dest_root/@swc/helpers"
+                fi
+              }
+              install_next_siblings() {
+                siblings=$(dirname "$NEXT_SRC")
+                for sib in "$siblings"/*; do
+                  [ -e "$sib" ] || continue
+                  name=$(basename "$sib")
+                  [ "$name" = "next" ] && continue
+                  copy_sibling_into "$name" "$sib" "$STANDALONE/node_modules"
+                  copy_sibling_into "$name" "$sib" "$STANDALONE/node_modules/next/node_modules"
+                  copy_sibling_into "$name" "$sib" "$APP_STANDALONE/node_modules"
+                  copy_sibling_into "$name" "$sib" "$DEST_NM"
+                done
+                if [ ! -f "$STANDALONE/node_modules/client-only/package.json" ]; then
+                  co_json=$(find "$STANDALONE/node_modules" -path "*/node_modules/client-only/package.json" 2>/dev/null | head -n 1)
+                  if [ -n "$co_json" ]; then
+                    co_src=$(readlink -f "$(dirname "$co_json")")
+                    copy_sibling_into client-only "$co_src" "$STANDALONE/node_modules"
+                    copy_sibling_into client-only "$co_src" "$STANDALONE/node_modules/next/node_modules"
+                    copy_sibling_into client-only "$co_src" "$APP_STANDALONE/node_modules"
+                    copy_sibling_into client-only "$co_src" "$DEST_NM"
+                  fi
+                fi
+              }
               install_next_and_helpers "$STANDALONE/node_modules"
               install_next_and_helpers "$APP_STANDALONE/node_modules"
               rm -rf "$DEST_NM"
               install_next_and_helpers "$DEST_NM"
+              install_next_siblings
               rm -rf apps/dashboard/.next/cache
               next_bytes=$(du -sb apps/dashboard/.next | awk '{print $1}')
               if [ "$next_bytes" -gt 188743680 ]; then
@@ -119,9 +155,11 @@ applications:
               echo NEXT_IN_DOTNEXT_STANDALONE_OK
               test -e "$STANDALONE/node_modules/@swc/helpers/_/_interop_require_default.js"
               echo SWC_SUBPATH_OK
+              test -f "$STANDALONE/node_modules/@next/env/package.json"
+              echo NEXT_ENV_OK
               test -f apps/dashboard/.next/required-server-files.json
               echo REQUIRED_SERVER_FILES_OK
-              du -sh apps/dashboard/.next "$STANDALONE" "$DEST_NM" "$STANDALONE/node_modules/next"
+              du -sh apps/dashboard/.next "$STANDALONE" "$DEST_NM" "$STANDALONE/node_modules/next" "$STANDALONE/node_modules/@next/env"
       artifacts:
         baseDirectory: apps/dashboard/.next
         files:
